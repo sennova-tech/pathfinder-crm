@@ -400,12 +400,9 @@ export default function OperationsDashboard() {
     <div className="min-h-screen bg-slate-50 flex font-sans">
       {/* SIDEBAR */}
       <aside className="w-56 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <img src="/logo.png" alt="PathFinder" className="w-10 h-10 rounded-lg object-cover" />
-          <div>
-            <span className="font-bold text-sm text-slate-900 block leading-tight">PathFinder</span>
-            <p className="text-xs text-slate-400">Operations Panel</p>
-          </div>
+        <div className="p-5 border-b border-slate-100">
+          <span className="font-bold text-lg text-slate-900 block leading-tight">PathStudentCRM</span>
+          <p className="text-xs text-slate-400">Operations Panel</p>
         </div>
         <nav className="flex-1 p-3">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-medium text-sm">
