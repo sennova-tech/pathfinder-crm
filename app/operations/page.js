@@ -235,7 +235,7 @@ export default function OperationsDashboard() {
         ref_contact_number: editData.ref_contact_number,
         payment_commitment: editData.payment_commitment,
         amount_spent: editData.amount_spent,
-        final_selection: editData.final_selection,
+        final_selection: editData.final_selection === 'Dropped' ? 'Dropped' : (applicationClosed ? 'Selected' : 'Pending'),
       })
       .eq('id', appId)
 
@@ -527,7 +527,11 @@ export default function OperationsDashboard() {
                       <td className="p-3">
                         <span
                           className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                            isDropped ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'
+                            isDropped
+                              ? 'bg-rose-50 text-rose-700'
+                              : status === 'Selected'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-blue-50 text-blue-700'
                           }`}
                         >
                           {status}
@@ -756,7 +760,7 @@ export default function OperationsDashboard() {
               </div>
 
               <h3 className="font-bold text-stone-800 mb-2">Application Checklist</h3>
-              <p className="text-xs text-stone-500 mb-4">Each step unlocks once the one above it is completed.</p>
+              <p className="text-xs text-stone-500 mb-4">Update any step independently, in any order.</p>
 
               <div className="bg-white border border-stone-100 rounded-2xl shadow-sm p-5 space-y-4">
                 <div>
@@ -844,7 +848,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>5. Document</label>
                   <select
-                    disabled={!callOk}
                     value={editData.document_status || 'Not Collected'}
                     onChange={(e) => setEditData({ ...editData, document_status: e.target.value })}
                     className={trackFieldClass}
@@ -857,7 +860,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>6. Mock Interview Informed</label>
                   <select
-                    disabled={!docOk}
                     value={editData.mock_interview_informed || 'Not Informed'}
                     onChange={(e) => setEditData({ ...editData, mock_interview_informed: e.target.value })}
                     className={trackFieldClass}
@@ -870,7 +872,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>7. Questions Shared</label>
                   <select
-                    disabled={!informedOk}
                     value={editData.questions_shared || 'No'}
                     onChange={(e) => setEditData({ ...editData, questions_shared: e.target.value })}
                     className={trackFieldClass}
@@ -883,7 +884,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>8. Mock Interview</label>
                   <select
-                    disabled={!questionsOk}
                     value={editData.mock_interview || 'Not Eligible'}
                     onChange={(e) => setEditData({ ...editData, mock_interview: e.target.value })}
                     className={trackFieldClass}
@@ -896,7 +896,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>9. Entrance Exam</label>
                   <select
-                    disabled={!mockOk}
                     value={editData.exam || 'Not Done'}
                     onChange={(e) => setEditData({ ...editData, exam: e.target.value })}
                     className={trackFieldClass}
@@ -909,7 +908,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>10. Interview Attended</label>
                   <select
-                    disabled={!examOk}
                     value={editData.interview_attended || 'No'}
                     onChange={(e) => setEditData({ ...editData, interview_attended: e.target.value })}
                     className={trackFieldClass}
@@ -922,7 +920,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>11. Interview Result</label>
                   <select
-                    disabled={!attendedOk}
                     value={editData.interview_selected || 'Not Selected'}
                     onChange={(e) => setEditData({ ...editData, interview_selected: e.target.value })}
                     className={trackFieldClass}
@@ -935,7 +932,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>12. Offer Letter Released</label>
                   <select
-                    disabled={!selectedOk}
                     value={editData.offer_letter_released || 'No'}
                     onChange={(e) => setEditData({ ...editData, offer_letter_released: e.target.value })}
                     className={trackFieldClass}
@@ -948,7 +944,6 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>13. Payment Received</label>
                   <select
-                    disabled={!offerOk}
                     value={editData.payment_received || 'No'}
                     onChange={(e) => setEditData({ ...editData, payment_received: e.target.value })}
                     className={trackFieldClass}
@@ -961,26 +956,12 @@ export default function OperationsDashboard() {
                 <div>
                   <label className={trackLabelClass}>14. Documents Submitted to Student</label>
                   <select
-                    disabled={!paymentOk}
                     value={editData.documents_submitted_to_student || 'No'}
                     onChange={(e) => setEditData({ ...editData, documents_submitted_to_student: e.target.value })}
                     className={trackFieldClass}
                   >
                     <option>No</option>
                     <option>Yes</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={trackLabelClass}>Final Selection (overall status shown in table)</label>
-                  <select
-                    value={editData.final_selection || 'Pending'}
-                    onChange={(e) => setEditData({ ...editData, final_selection: e.target.value })}
-                    className={trackFieldClass}
-                  >
-                    <option>Pending</option>
-                    <option>Selected</option>
-                    <option>Not Selected</option>
                   </select>
                 </div>
               </div>

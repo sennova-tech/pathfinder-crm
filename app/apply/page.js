@@ -20,16 +20,20 @@ export default function ApplyPage() {
     qualification: '',
     specialization: '',
     year_of_passing: '',
+    applying_for_company: '',
     has_career_gap: 'No',
     career_gap_reason: '',
     experience_category: 'Fresher',
     designation: '',
     total_experience: '',
+    present_ctc: '',
+    expected_ctc: '',
     exp_documents_available: 'Yes',
     exp_documents_missing_reason: '',
     notice_period: '',
     pf_issues: '',
     reference_name: '',
+    reference_contact_number: '',
   })
 
   const [resumeFile, setResumeFile] = useState(null)
@@ -89,12 +93,13 @@ export default function ApplyPage() {
       if (form.experience_category === 'Fresher') {
         payload.designation = null
         payload.total_experience = null
+        payload.present_ctc = null
+        payload.expected_ctc = null
         payload.exp_documents_available = null
         payload.exp_documents_missing_reason = null
         payload.notice_period = null
         payload.pf_issues = null
         payload.pf_history_url = null
-        payload.reference_name = null
       }
 
       const { error: insertError } = await supabase
@@ -219,6 +224,18 @@ export default function ApplyPage() {
                 <input required value={form.year_of_passing} onChange={(e) => update('year_of_passing', e.target.value)} className={inputClass} />
               </div>
               <div>
+                <label className={labelClass}>Applying for which company? *</label>
+                <input required value={form.applying_for_company} onChange={(e) => update('applying_for_company', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Reference Name *</label>
+                <input required value={form.reference_name} onChange={(e) => update('reference_name', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Reference Contact Number *</label>
+                <input required value={form.reference_contact_number} onChange={(e) => update('reference_contact_number', e.target.value)} className={inputClass} />
+              </div>
+              <div>
                 <label className={labelClass}>Educational or Career Gap?</label>
                 <select value={form.has_career_gap} onChange={(e) => update('has_career_gap', e.target.value)} className={inputClass}>
                   <option>No</option>
@@ -274,6 +291,16 @@ export default function ApplyPage() {
                   </div>
 
                   <div>
+                    <label className={labelClass}>Present CTC</label>
+                    <input value={form.present_ctc} onChange={(e) => update('present_ctc', e.target.value)} className={inputClass} />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Expected CTC</label>
+                    <input value={form.expected_ctc} onChange={(e) => update('expected_ctc', e.target.value)} className={inputClass} />
+                  </div>
+
+                  <div>
                     <label className={labelClass}>Are all required experience documents available?</label>
                     <select value={form.exp_documents_available} onChange={(e) => update('exp_documents_available', e.target.value)} className={inputClass}>
                       <option>Yes</option>
@@ -301,11 +328,6 @@ export default function ApplyPage() {
                   <div>
                     <label className={labelClass}>Any PF-related issues?</label>
                     <textarea value={form.pf_issues} onChange={(e) => update('pf_issues', e.target.value)} className={inputClass} rows={3} />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>Reference Name</label>
-                    <input value={form.reference_name} onChange={(e) => update('reference_name', e.target.value)} className={inputClass} />
                   </div>
                 </div>
               )}
