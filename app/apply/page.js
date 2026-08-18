@@ -33,7 +33,6 @@ export default function ApplyPage() {
     notice_period: '',
     pf_issues: '',
     reference_name: '',
-    reference_contact_number: '',
   })
 
   const [resumeFile, setResumeFile] = useState(null)
@@ -230,10 +229,6 @@ export default function ApplyPage() {
               <div>
                 <label className={labelClass}>Reference Name *</label>
                 <input required value={form.reference_name} onChange={(e) => update('reference_name', e.target.value)} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Reference Contact Number *</label>
-                <input required value={form.reference_contact_number} onChange={(e) => update('reference_contact_number', e.target.value)} className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>Educational or Career Gap?</label>
