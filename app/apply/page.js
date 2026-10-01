@@ -212,11 +212,38 @@ export default function ApplyPage() {
             <div className="space-y-6">
               <div>
                 <label className={labelClass}>Qualification *</label>
-                <input required value={form.qualification} onChange={(e) => update('qualification', e.target.value)} className={inputClass} />
+                <select required value={form.qualification} onChange={(e) => update('qualification', e.target.value)} className={inputClass}>
+                  <option value="" disabled>Select degree</option>
+                  <option>B-Tech</option>
+                  <option>B.E</option>
+                  <option>B.Sc</option>
+                  <option>B.Com</option>
+                  <option>BBA</option>
+                  <option>BCA</option>
+                  <option>B.A</option>
+                  <option>M-Tech</option>
+                  <option>MBA</option>
+                  <option>MCA</option>
+                  <option>M.Sc</option>
+                  <option>Diploma</option>
+                  <option>Others</option>
+                </select>
               </div>
               <div>
-                <label className={labelClass}>Specialization</label>
-                <input value={form.specialization} onChange={(e) => update('specialization', e.target.value)} className={inputClass} />
+                <label className={labelClass}>Stream / Branch</label>
+                <select value={form.specialization} onChange={(e) => update('specialization', e.target.value)} className={inputClass}>
+                  <option value="" disabled>Select stream/branch</option>
+                  <option>CSE</option>
+                  <option>ECE</option>
+                  <option>EEE</option>
+                  <option>Mechanical</option>
+                  <option>Civil</option>
+                  <option>IT</option>
+                  <option>BBA</option>
+                  <option>BCA</option>
+                  <option>Commerce</option>
+                  <option>Others</option>
+                </select>
               </div>
               <div>
                 <label className={labelClass}>Year of Passing *</label>
@@ -224,7 +251,14 @@ export default function ApplyPage() {
               </div>
               <div>
                 <label className={labelClass}>Applying for which company? *</label>
-                <input required value={form.applying_for_company} onChange={(e) => update('applying_for_company', e.target.value)} className={inputClass} />
+                <select required value={form.applying_for_company} onChange={(e) => update('applying_for_company', e.target.value)} className={inputClass}>
+                  <option value="" disabled>Select a company</option>
+                  <option>Concentrix</option>
+                  <option>Accenture</option>
+                  <option>Cognizant</option>
+                  <option>Wipro</option>
+                  <option>Others</option>
+                </select>
               </div>
               <div>
                 <label className={labelClass}>Reference Name *</label>

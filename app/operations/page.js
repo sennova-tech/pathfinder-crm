@@ -31,6 +31,8 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+const COMPANIES = ['Concentrix', 'Accenture', 'Cognizant', 'Wipro', 'Others']
+
 function parseAmount(val) {
   if (!val) return 0
   const num = parseFloat(String(val).replace(/[^0-9.]/g, ''))
@@ -59,10 +61,35 @@ export default function OperationsDashboard() {
   const [editData, setEditData] = useState({})
   const [viewFilter, setViewFilter] = useState('active')
   const [downloadMonth, setDownloadMonth] = useState('')
+  const [companyFilter, setCompanyFilter] = useState(null)
+  const [companyTab, setCompanyTab] = useState('Active')
+  const [seenIds, setSeenIds] = useState([])
+  const [viewingProfile, setViewingProfile] = useState(null)
+  const [viewingFile, setViewingFile] = useState(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     fetchStudents()
+    try {
+      const stored = JSON.parse(localStorage.getItem('operations_seen_ids') || '[]')
+      setSeenIds(stored)
+    } catch {
+      setSeenIds([])
+    }
   }, [])
+
+  function markCompanySeen(company) {
+    const idsForCompany = activeStudents
+      .filter((s) => companyOf(s) === company)
+      .map((s) => s.id)
+    setSeenIds((prev) => {
+      const next = Array.from(new Set([...prev, ...idsForCompany]))
+      try {
+        localStorage.setItem('operations_seen_ids', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
 
   async function fetchStudents() {
     setLoading(true)
@@ -235,7 +262,7 @@ export default function OperationsDashboard() {
         ref_contact_number: editData.ref_contact_number,
         payment_commitment: editData.payment_commitment,
         amount_spent: editData.amount_spent,
-        final_selection: editData.final_selection === 'Dropped' ? 'Dropped' : (applicationClosed ? 'Selected' : 'Pending'),
+        final_selection: editData.final_selection || 'Pending',
       })
       .eq('id', appId)
 
@@ -290,14 +317,65 @@ export default function OperationsDashboard() {
     () => students.filter((s) => s.applications?.[0]?.final_selection === 'Dropped'),
     [students]
   )
-  const displayedStudents = viewFilter === 'dropped' ? droppedStudents : activeStudents
+  function matchesMonth(student) {
+    return downloadMonth === '' || new Date(student.submitted_at).getMonth() === Number(downloadMonth)
+  }
+
+  const monthFilteredActive = useMemo(
+    () => activeStudents.filter(matchesMonth),
+    [activeStudents, downloadMonth]
+  )
+  const monthFilteredDropped = useMemo(
+    () => droppedStudents.filter(matchesMonth),
+    [droppedStudents, downloadMonth]
+  )
+
+  const baseStudents = viewFilter === 'dropped' ? monthFilteredDropped : monthFilteredActive
+
+  const monthFilteredAll = useMemo(
+    () => students.filter(matchesMonth),
+    [students, downloadMonth]
+  )
+
+  function statusTabOf(student) {
+    const app = student.applications?.[0] || {}
+    if (app.final_selection === 'Dropped') return 'Dropped'
+    if (app.final_selection === 'Not Selected') return 'Rejected'
+    if (app.final_selection === 'Selected') {
+      return app.payment_received === 'Yes' ? 'Closed' : 'Selected'
+    }
+    return 'Active'
+  }
+
+  function companyOf(student) {
+    const raw = (student.applying_for_company || '').trim().toLowerCase()
+    const known = ['concentrix', 'accenture', 'cognizant', 'wipro']
+    const match = known.find((k) => raw === k)
+    return match ? match.charAt(0).toUpperCase() + match.slice(1) : 'Others'
+  }
+
+  const companyCounts = useMemo(() => {
+    const counts = { Concentrix: 0, Accenture: 0, Cognizant: 0, Wipro: 0, Others: 0 }
+    baseStudents.forEach((s) => {
+      counts[companyOf(s)]++
+    })
+    return counts
+  }, [baseStudents])
+
+  const newCompanyCounts = useMemo(() => {
+    const counts = { Concentrix: 0, Accenture: 0, Cognizant: 0, Wipro: 0, Others: 0 }
+    activeStudents.forEach((s) => {
+      if (!seenIds.includes(s.id)) counts[companyOf(s)]++
+    })
+    return counts
+  }, [activeStudents, seenIds])
+
+  const displayedStudents = companyFilter
+    ? monthFilteredAll.filter((s) => companyOf(s) === companyFilter && statusTabOf(s) === companyTab)
+    : baseStudents
 
   function handleDownloadExcel() {
-    const monthFiltered = downloadMonth === ''
-      ? displayedStudents
-      : displayedStudents.filter((s) => new Date(s.submitted_at).getMonth() === Number(downloadMonth))
-
-    const rows = monthFiltered.map((s) => {
+    const rows = displayedStudents.map((s) => {
       const app = s.applications?.[0] || {}
       return {
         'Student ID': s.student_code,
@@ -344,8 +422,9 @@ export default function OperationsDashboard() {
     let pendingCount = 0
     let committedRevenue = 0
     let receivedRevenue = 0
+    let totalSpent = 0
 
-    activeStudents.forEach((s) => {
+    monthFilteredActive.forEach((s) => {
       const app = s.applications?.[0] || {}
       if (app.final_selection === 'Selected') selectedCount++
       else if (app.final_selection === 'Not Selected') notSelectedCount++
@@ -354,18 +433,20 @@ export default function OperationsDashboard() {
       const amount = parseAmount(app.payment_commitment)
       committedRevenue += amount
       if (app.payment_received === 'Yes') receivedRevenue += amount
+      totalSpent += parseAmount(app.amount_spent)
     })
 
     return {
-      total: activeStudents.length,
+      total: monthFilteredActive.length,
       selectedCount,
       notSelectedCount,
       pendingCount,
       committedRevenue,
       receivedRevenue,
       pendingRevenue: committedRevenue - receivedRevenue,
+      profitMargin: committedRevenue - totalSpent,
     }
-  }, [activeStudents])
+  }, [monthFilteredActive])
 
   const callOk = editData.call_followup === 'Yes'
   const docOk = callOk && editData.document_status === 'Collected'
@@ -398,16 +479,75 @@ export default function OperationsDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
+      {/* MOBILE TOP BAR */}
+      <div className="sm:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
+        <span className="font-bold text-slate-900">PathStudentCRM</span>
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          className="text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+        >
+          Menu
+        </button>
+      </div>
+
+      {/* MOBILE OVERLAY */}
+      {mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          className="sm:hidden fixed inset-0 bg-black/40 z-40"
+        />
+      )}
+
       {/* SIDEBAR */}
-      <aside className="w-56 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div className="p-5 border-b border-slate-100">
-          <span className="font-bold text-lg text-slate-900 block leading-tight">PathStudentCRM</span>
-          <p className="text-xs text-slate-400">Operations Panel</p>
+      <aside
+        className={`w-56 bg-white border-r border-slate-200 flex flex-col shrink-0 fixed sm:static inset-y-0 left-0 z-50 transform transition-transform duration-200 ${
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+        } sm:translate-x-0`}
+      >
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <span className="font-bold text-lg text-slate-900 block leading-tight">PathStudentCRM</span>
+            <p className="text-xs text-slate-400">Operations Panel</p>
+          </div>
+          <button onClick={() => setMobileNavOpen(false)} className="sm:hidden text-slate-400 text-xl leading-none">
+            &times;
+          </button>
         </div>
         <nav className="flex-1 p-3">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-medium text-sm">
+          <div
+            onClick={() => {
+              setCompanyFilter(null)
+              setMobileNavOpen(false)
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm cursor-pointer ${
+              !companyFilter ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
             Dashboard
           </div>
+
+          <p className="px-3 pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Companies</p>
+          {COMPANIES.map((c) => (
+            <div
+              key={c}
+              onClick={() => {
+                setCompanyFilter(companyFilter === c ? null : c)
+                setCompanyTab('Active')
+                markCompanySeen(c)
+                setMobileNavOpen(false)
+              }}
+              className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg font-medium text-sm cursor-pointer ${
+                companyFilter === c ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span>{c}</span>
+              {newCompanyCounts[c] > 0 && (
+                <span className="text-xs font-semibold rounded-full px-2 py-0.5 bg-rose-100 text-rose-700">
+                  {newCompanyCounts[c]}
+                </span>
+              )}
+            </div>
+          ))}
         </nav>
         <div className="p-3 border-t border-slate-100">
           <button
@@ -420,13 +560,13 @@ export default function OperationsDashboard() {
       </aside>
 
       {/* MAIN */}
-      <main className="flex-1 p-8 overflow-x-hidden">
-        <div className="flex justify-between items-center mb-6">
+      <main className="flex-1 p-4 sm:p-8 pt-20 sm:pt-8 overflow-x-hidden w-full min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Operations Portal</h1>
-            <p className="text-sm text-slate-500">Manage student applications</p>
+            <h1 className="text-2xl font-bold text-slate-900">{companyFilter || 'Operations Portal'}</h1>
+            <p className="text-sm text-slate-500">{companyFilter ? `Applicants for ${companyFilter}` : 'Manage student applications'}</p>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-wrap gap-2 items-center">
             <select
               value={downloadMonth}
               onChange={(e) => setDownloadMonth(e.target.value)}
@@ -452,130 +592,99 @@ export default function OperationsDashboard() {
           </div>
         </div>
 
-        {/* STAT CARDS */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          <StatCard label="Total Applications" value={stats.total} />
-          <StatCard label="Selected" value={stats.selectedCount} accent="text-emerald-600" />
-          <StatCard label="Not Selected" value={stats.notSelectedCount} accent="text-rose-600" />
-          <StatCard label="Pending" value={stats.pendingCount} accent="text-amber-600" />
-          <StatCard label="Committed Revenue" value={`₹${stats.committedRevenue.toLocaleString('en-IN')}`} accent="text-indigo-600" />
-          <StatCard label="Received Revenue" value={`₹${stats.receivedRevenue.toLocaleString('en-IN')}`} accent="text-emerald-600" />
-          <StatCard label="Pending Revenue" value={`₹${stats.pendingRevenue.toLocaleString('en-IN')}`} accent="text-amber-600" />
-        </div>
+        {!companyFilter && (
+          <>
+            {/* STAT CARDS */}
+            <div className="flex flex-wrap gap-4 mb-6">
+              <StatCard label="Total Applications" value={stats.total} />
+              <StatCard label="Selected" value={stats.selectedCount} accent="text-emerald-600" />
+              <StatCard label="Not Selected" value={stats.notSelectedCount} accent="text-rose-600" />
+              <StatCard label="Pending" value={stats.pendingCount} accent="text-amber-600" />
+              <StatCard label="Committed Revenue" value={`₹${stats.committedRevenue.toLocaleString('en-IN')}`} accent="text-indigo-600" />
+              <StatCard label="Received Revenue" value={`₹${stats.receivedRevenue.toLocaleString('en-IN')}`} accent="text-emerald-600" />
+              <StatCard label="Pending Revenue" value={`₹${stats.pendingRevenue.toLocaleString('en-IN')}`} accent="text-amber-600" />
+              <StatCard label="Profit Margin" value={`₹${stats.profitMargin.toLocaleString('en-IN')}`} accent="text-indigo-600" />
+            </div>
+          </>
+        )}
 
-        {/* ACTIVE / DROPPED TOGGLE */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setViewFilter('active')}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition ${
-              viewFilter === 'active'
-                ? 'bg-slate-900 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Active ({activeStudents.length})
-          </button>
-          <button
-            onClick={() => setViewFilter('dropped')}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition ${
-              viewFilter === 'dropped'
-                ? 'bg-rose-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Dropped ({droppedStudents.length})
-          </button>
-        </div>
+        {companyFilter && (
+        <>
+          {/* COMPANY TABS */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {['Active', 'Selected', 'Rejected', 'Dropped', 'Closed'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setCompanyTab(t)}
+                className={`text-sm px-4 py-2 rounded-lg font-medium transition ${
+                  companyTab === t
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
 
         {loading ? (
           <p className="text-slate-400">Loading...</p>
         ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs tracking-wide">
-                <tr>
-                  <th className="p-3">Student ID</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">College</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3">Qualification</th>
-                  <th className="p-3">Applying For</th>
-                  <th className="p-3">Experience</th>
-                  <th className="p-3">Submitted</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedStudents.map((s) => {
-                  const status = s.applications?.[0]?.final_selection || 'Pending'
-                  const isDropped = status === 'Dropped'
-                  return (
-                    <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50">
-                      <td className="p-3 font-medium text-slate-900">{s.student_code}</td>
-                      <td className="p-3">{s.full_name}</td>
-                      <td className="p-3">{s.college || '-'}</td>
-                      <td className="p-3">{s.email}</td>
-                      <td className="p-3">{s.phone || s.contact_number}</td>
-                      <td className="p-3">{s.qualification || '-'}</td>
-                      <td className="p-3">{s.applying_for_company || '-'}</td>
-                      <td className="p-3">{s.experience_category || '-'}</td>
-                      <td className="p-3">
-                        {new Date(s.submitted_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                            isDropped
-                              ? 'bg-rose-50 text-rose-700'
-                              : status === 'Selected'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-blue-50 text-blue-700'
-                          }`}
-                        >
-                          {status}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex gap-3 items-center">
-                          <button
-                            onClick={() => openTrack(s)}
-                            className="text-blue-600 font-medium hover:underline"
-                          >
-                            Track / Edit
-                          </button>
-                          {!isDropped && (
-                            <button
-                              onClick={() => handleDrop(s)}
-                              className="text-rose-600 font-medium hover:underline"
-                            >
-                              Drop
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDelete(s)}
-                            className="text-slate-400 font-medium hover:underline hover:text-slate-600"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {displayedStudents.length === 0 && (
-                  <tr>
-                    <td colSpan={11} className="p-6 text-center text-slate-400">
-                      {viewFilter === 'dropped'
-                        ? 'No dropped students.'
-                        : 'No students yet. Click "+ Add Student" to create one.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {displayedStudents.map((s) => {
+              const status = s.applications?.[0]?.final_selection || 'Pending'
+              const isDropped = status === 'Dropped'
+              const initials = (s.full_name || '?')
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((w) => w[0].toUpperCase())
+                .join('')
+              const statusClass = isDropped
+                ? 'bg-rose-50 text-rose-700'
+                : status === 'Selected'
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-blue-50 text-blue-700'
+              return (
+                <div key={s.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4">
+                  <button
+                    onClick={() => setViewingProfile(s)}
+                    className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0 hover:ring-2 hover:ring-blue-300 transition"
+                  >
+                    {initials}
+                  </button>
+                  <div className="flex-1 min-w-[140px]">
+                    <p className="font-semibold text-slate-900 text-sm">
+                      {s.full_name}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {s.college || '-'} · {s.phone || s.contact_number} · {s.experience_category || '-'}
+                    </p>
+                  </div>
+                  <div className="flex gap-3 items-center text-sm shrink-0 w-full sm:w-auto justify-end sm:justify-start">
+                    <button onClick={() => openTrack(s)} className="text-blue-600 font-medium hover:underline">
+                      Track
+                    </button>
+                    {!isDropped && (
+                      <button onClick={() => handleDrop(s)} className="text-rose-600 font-medium hover:underline">
+                        Drop
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(s)} className="text-slate-400 font-medium hover:underline hover:text-slate-600">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            {displayedStudents.length === 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center text-slate-400">
+                No students in this view.
+              </div>
+            )}
           </div>
+        )}
+        </>
         )}
 
         {/* ADD STUDENT MODAL */}
@@ -606,12 +715,39 @@ export default function OperationsDashboard() {
 
                 <div>
                   <label className={labelClass}>Qualification *</label>
-                  <input required value={newStudent.qualification} onChange={(e) => updateNew('qualification', e.target.value)} className={fieldClass} />
+                  <select required value={newStudent.qualification} onChange={(e) => updateNew('qualification', e.target.value)} className={fieldClass}>
+                    <option value="" disabled>Select degree</option>
+                    <option>B-Tech</option>
+                    <option>B.E</option>
+                    <option>B.Sc</option>
+                    <option>B.Com</option>
+                    <option>BBA</option>
+                    <option>BCA</option>
+                    <option>B.A</option>
+                    <option>M-Tech</option>
+                    <option>MBA</option>
+                    <option>MCA</option>
+                    <option>M.Sc</option>
+                    <option>Diploma</option>
+                    <option>Others</option>
+                  </select>
                 </div>
 
                 <div>
-                  <label className={labelClass}>Specialization</label>
-                  <input value={newStudent.specialization} onChange={(e) => updateNew('specialization', e.target.value)} className={fieldClass} />
+                  <label className={labelClass}>Stream / Branch</label>
+                  <select value={newStudent.specialization} onChange={(e) => updateNew('specialization', e.target.value)} className={fieldClass}>
+                    <option value="" disabled>Select stream/branch</option>
+                    <option>CSE</option>
+                    <option>ECE</option>
+                    <option>EEE</option>
+                    <option>Mechanical</option>
+                    <option>Civil</option>
+                    <option>IT</option>
+                    <option>BBA</option>
+                    <option>BCA</option>
+                    <option>Commerce</option>
+                    <option>Others</option>
+                  </select>
                 </div>
 
                 <div>
@@ -621,7 +757,14 @@ export default function OperationsDashboard() {
 
                 <div>
                   <label className={labelClass}>Applying for which company? *</label>
-                  <input required value={newStudent.applying_for_company} onChange={(e) => updateNew('applying_for_company', e.target.value)} className={fieldClass} />
+                  <select required value={newStudent.applying_for_company} onChange={(e) => updateNew('applying_for_company', e.target.value)} className={fieldClass}>
+                    <option value="" disabled>Select a company</option>
+                    <option>Concentrix</option>
+                    <option>Accenture</option>
+                    <option>Cognizant</option>
+                    <option>Wipro</option>
+                    <option>Others</option>
+                  </select>
                 </div>
 
                 <div>
@@ -729,6 +872,66 @@ export default function OperationsDashboard() {
           </div>
         )}
 
+        {/* STUDENT PROFILE (APPLICATION FORM DETAILS) MODAL */}
+        {viewingProfile && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl shadow-xl p-7 w-full max-w-lg max-h-[90vh] overflow-y-auto border border-stone-100">
+              <h2 className="text-xl font-bold text-stone-800 mb-1">{viewingProfile.full_name}</h2>
+              <p className="text-sm text-stone-500 mb-4">
+                {viewingProfile.college}
+              </p>
+
+              <div className="text-sm space-y-1.5 bg-stone-50 border border-stone-100 p-4 rounded-2xl">
+                <p><strong className="text-stone-700">Email:</strong> <span className="text-stone-600">{viewingProfile.email}</span></p>
+                <p><strong className="text-stone-700">Phone:</strong> <span className="text-stone-600">{viewingProfile.contact_number}</span></p>
+                <p><strong className="text-stone-700">Qualification:</strong> <span className="text-stone-600">{viewingProfile.qualification}</span></p>
+                <p><strong className="text-stone-700">Applying for:</strong> <span className="text-stone-600">{viewingProfile.applying_for_company}</span></p>
+                <p><strong className="text-stone-700">Experience Category:</strong> <span className="text-stone-600">{viewingProfile.experience_category}</span></p>
+                <p><strong className="text-stone-700">Reference Name:</strong> <span className="text-stone-600">{viewingProfile.reference_name || '-'}</span></p>
+
+                <div className="flex gap-3 pt-2">
+                  {viewingProfile.resume_url && (
+                    <button onClick={() => setViewingFile({ url: viewingProfile.resume_url, label: 'Resume' })} className="text-amber-600 font-medium hover:underline">Resume</button>
+                  )}
+                  {viewingProfile.pan_url && (
+                    <button onClick={() => setViewingFile({ url: viewingProfile.pan_url, label: 'PAN Card' })} className="text-amber-600 font-medium hover:underline">PAN Card</button>
+                  )}
+                  {viewingProfile.pf_history_url && (
+                    <button onClick={() => setViewingFile({ url: viewingProfile.pf_history_url, label: 'PF History' })} className="text-amber-600 font-medium hover:underline">PF History</button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-5">
+                <button
+                  onClick={() => setViewingProfile(null)}
+                  className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FILE VIEWER MODAL */}
+        {viewingFile && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="flex justify-between items-center p-4 border-b border-stone-100">
+                <h3 className="font-bold text-stone-800">{viewingFile.label}</h3>
+                <button
+                  onClick={() => setViewingFile(null)}
+                  className="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-100 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              <iframe src={viewingFile.url} className="flex-1 w-full" style={{ minHeight: '70vh' }} />
+            </div>
+          </div>
+        )}
+
         {/* TRACK / EDIT APPLICATION MODAL */}
         {selected && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
@@ -738,29 +941,7 @@ export default function OperationsDashboard() {
                 {selected.student_code} · {selected.college}
               </p>
 
-              <div className="text-sm mb-5 space-y-1.5 bg-white border border-stone-100 p-4 rounded-2xl shadow-sm">
-                <p><strong className="text-stone-700">Email:</strong> <span className="text-stone-600">{selected.email}</span></p>
-                <p><strong className="text-stone-700">Phone:</strong> <span className="text-stone-600">{selected.contact_number}</span></p>
-                <p><strong className="text-stone-700">Qualification:</strong> <span className="text-stone-600">{selected.qualification}</span></p>
-                <p><strong className="text-stone-700">Applying for:</strong> <span className="text-stone-600">{selected.applying_for_company}</span></p>
-                <p><strong className="text-stone-700">Experience Category:</strong> <span className="text-stone-600">{selected.experience_category}</span></p>
-                <p><strong className="text-stone-700">Reference Name (from application):</strong> <span className="text-stone-600">{selected.reference_name || '-'}</span></p>
-
-                <div className="flex gap-3 pt-2">
-                  {selected.resume_url && (
-                    <a href={selected.resume_url} target="_blank" className="text-amber-600 font-medium hover:underline">Resume</a>
-                  )}
-                  {selected.pan_url && (
-                    <a href={selected.pan_url} target="_blank" className="text-amber-600 font-medium hover:underline">PAN Card</a>
-                  )}
-                  {selected.pf_history_url && (
-                    <a href={selected.pf_history_url} target="_blank" className="text-amber-600 font-medium hover:underline">PF History</a>
-                  )}
-                </div>
-              </div>
-
               <h3 className="font-bold text-stone-800 mb-2">Application Checklist</h3>
-              <p className="text-xs text-stone-500 mb-4">Update any step independently, in any order.</p>
 
               <div className="bg-white border border-stone-100 rounded-2xl shadow-sm p-5 space-y-4">
                 <div>
@@ -773,16 +954,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>2. Reference Contact Number</label>
-                  <input
-                    value={editData.ref_contact_number || ''}
-                    onChange={(e) => setEditData({ ...editData, ref_contact_number: e.target.value })}
-                    className={trackFieldClass}
-                  />
-                </div>
-
-                <div>
-                  <label className={trackLabelClass}>3. Payment Commitment</label>
+                  <label className={trackLabelClass}>2. Payment Commitment</label>
                   <input
                     value={editData.payment_commitment || ''}
                     onChange={(e) => setEditData({ ...editData, payment_commitment: e.target.value })}
@@ -816,25 +988,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>Company</label>
-                  <input
-                    value={editData.company || ''}
-                    onChange={(e) => setEditData({ ...editData, company: e.target.value })}
-                    className={trackFieldClass}
-                  />
-                </div>
-
-                <div>
-                  <label className={trackLabelClass}>Role</label>
-                  <input
-                    value={editData.role || ''}
-                    onChange={(e) => setEditData({ ...editData, role: e.target.value })}
-                    className={trackFieldClass}
-                  />
-                </div>
-
-                <div>
-                  <label className={trackLabelClass}>4. Call Follow-up</label>
+                  <label className={trackLabelClass}>3. Call Follow-up</label>
                   <select
                     value={editData.call_followup || 'No'}
                     onChange={(e) => setEditData({ ...editData, call_followup: e.target.value })}
@@ -846,7 +1000,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>5. Document</label>
+                  <label className={trackLabelClass}>4. Document</label>
                   <select
                     value={editData.document_status || 'Not Collected'}
                     onChange={(e) => setEditData({ ...editData, document_status: e.target.value })}
@@ -858,7 +1012,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>6. Mock Interview Informed</label>
+                  <label className={trackLabelClass}>5. Mock Interview Informed</label>
                   <select
                     value={editData.mock_interview_informed || 'Not Informed'}
                     onChange={(e) => setEditData({ ...editData, mock_interview_informed: e.target.value })}
@@ -870,7 +1024,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>7. Questions Shared</label>
+                  <label className={trackLabelClass}>6. Questions Shared</label>
                   <select
                     value={editData.questions_shared || 'No'}
                     onChange={(e) => setEditData({ ...editData, questions_shared: e.target.value })}
@@ -882,7 +1036,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>8. Mock Interview</label>
+                  <label className={trackLabelClass}>7. Mock Interview</label>
                   <select
                     value={editData.mock_interview || 'Not Eligible'}
                     onChange={(e) => setEditData({ ...editData, mock_interview: e.target.value })}
@@ -894,7 +1048,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>9. Entrance Exam</label>
+                  <label className={trackLabelClass}>8. Entrance Exam</label>
                   <select
                     value={editData.exam || 'Not Done'}
                     onChange={(e) => setEditData({ ...editData, exam: e.target.value })}
@@ -906,7 +1060,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>10. Interview Attended</label>
+                  <label className={trackLabelClass}>9. Interview Attended</label>
                   <select
                     value={editData.interview_attended || 'No'}
                     onChange={(e) => setEditData({ ...editData, interview_attended: e.target.value })}
@@ -918,7 +1072,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>11. Interview Result</label>
+                  <label className={trackLabelClass}>10. Interview Result</label>
                   <select
                     value={editData.interview_selected || 'Not Selected'}
                     onChange={(e) => setEditData({ ...editData, interview_selected: e.target.value })}
@@ -930,7 +1084,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>12. Offer Letter Released</label>
+                  <label className={trackLabelClass}>11. Offer Letter Released</label>
                   <select
                     value={editData.offer_letter_released || 'No'}
                     onChange={(e) => setEditData({ ...editData, offer_letter_released: e.target.value })}
@@ -942,7 +1096,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>13. Payment Received</label>
+                  <label className={trackLabelClass}>12. Payment Received</label>
                   <select
                     value={editData.payment_received || 'No'}
                     onChange={(e) => setEditData({ ...editData, payment_received: e.target.value })}
@@ -954,7 +1108,7 @@ export default function OperationsDashboard() {
                 </div>
 
                 <div>
-                  <label className={trackLabelClass}>14. Documents Submitted to Student</label>
+                  <label className={trackLabelClass}>13. Documents Submitted to Student</label>
                   <select
                     value={editData.documents_submitted_to_student || 'No'}
                     onChange={(e) => setEditData({ ...editData, documents_submitted_to_student: e.target.value })}
@@ -964,10 +1118,19 @@ export default function OperationsDashboard() {
                     <option>Yes</option>
                   </select>
                 </div>
-              </div>
 
-              <div className={`mt-5 p-3 rounded-xl text-center font-semibold ${applicationClosed ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                {applicationClosed ? 'Application Successfully Closed' : 'Application Not Closed Yet'}
+                <div>
+                  <label className={trackLabelClass}>14. Current Status</label>
+                  <select
+                    value={editData.final_selection || 'Pending'}
+                    onChange={(e) => setEditData({ ...editData, final_selection: e.target.value })}
+                    className={trackFieldClass}
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Selected">Selected</option>
+                    <option value="Not Selected">Rejected</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-2 justify-end pt-5">
